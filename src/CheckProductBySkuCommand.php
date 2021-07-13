@@ -36,15 +36,26 @@ class CheckProductBySkuCommand extends Command
         foreach ($tables as $table) {
             $propertyName = "Tables_in_{$dbName}";
             $tableName = $table->$propertyName;
-            $rows = [];
+            $skuRows = [];
+            $entityIdRows = [];
 
             try {
-                $rows = DB::select("select * from {$tableName} where sku = ? or entity_id = ?", [$sku, $product->entity_id]);
+                $skuRows = DB::select("select * from {$tableName} where sku = ?", [$sku]);
             } catch (\Exception $exception) {
                 if (!strstr($exception->getMessage(), 'Column not found')) {
                     throw $exception;
                 }
             }
+
+            try {
+                $entityIdRows = DB::select("select * from {$tableName} where entity_id = ?", [$product->entity_id]);
+            } catch (\Exception $exception) {
+                if (!strstr($exception->getMessage(), 'Column not found')) {
+                    throw $exception;
+                }
+            }
+
+            $rows = array_merge($skuRows, $entityIdRows);
 
             if (empty($rows)) {
                 continue;
