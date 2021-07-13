@@ -1,0 +1,1 @@
+# magento-product-db-checker
