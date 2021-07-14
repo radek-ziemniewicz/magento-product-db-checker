@@ -82,10 +82,7 @@ class CheckProductBySkuCommand extends Command
                 continue;
             }
 
-            $results[] = [
-                'table' => $tableName,
-                'rows' => $rows,
-            ];
+            $results[$tableName] = $rows;
         }
 
         return $results;
@@ -99,7 +96,7 @@ class CheckProductBySkuCommand extends Command
             if (is_array($value)) {
                 if (!isset($array2[$key]) || !is_array($array2[$key])) {
                     $difference[$key]['pre'] = $value;
-                    $difference[$key]['post'] = $array2[$key] ?? '-';
+                    $difference[$key]['post'] = $array2[$key] ?? '(no value)';
                 } else {
                     $newDiff = $this->array_diff_assoc_recursive($value, $array2[$key]);
 
@@ -109,7 +106,7 @@ class CheckProductBySkuCommand extends Command
                 }
             } elseif (!array_key_exists($key, $array2) || $array2[$key] !== $value) {
                 $difference[$key]['pre'] = $value;
-                $difference[$key]['post'] = $array2[$key] ?? '-';
+                $difference[$key]['post'] = $array2[$key] ?? '(no value)';
             }
         }
 
