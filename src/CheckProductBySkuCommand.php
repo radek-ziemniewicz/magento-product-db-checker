@@ -7,6 +7,8 @@ use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputArgument;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Output\OutputInterface;
+use Symfony\Component\Console\Question\ConfirmationQuestion;
+use Symfony\Component\Filesystem\Filesystem;
 
 class CheckProductBySkuCommand extends Command
 {
@@ -22,50 +24,95 @@ class CheckProductBySkuCommand extends Command
         $dbName = $_ENV['DB_NAME'];
         $sku = $input->getArgument('sku');
         $products = DB::select('select * from catalog_product_entity where sku = ? limit 1', [$sku]);
+        $filesystem = new Filesystem();
+        $filesystem->touch('pre.txt');
+        $filesystem->touch('post.txt');
 
         if (empty($products)) {
             throw new \InvalidArgumentException('Product not found');
         }
 
-        $product = $products[0];
         $tables = DB::select('show tables');
         $tablesNum = count($tables);
-        $output->writeln("Found {$tablesNum} tables, searching product in:");
-        $i = 0;
+        $output->writeln("<info>Found {$tablesNum} tables, searching product SKU #{$sku} in them.</info>");
+        $preResults = $this->loopThroughTables($dbName, $tables, $products[0]);
+        $filesystem->dumpFile('pre.txt', serialize($preResults));
+
+        $helper = $this->getHelper('question');
+        $question = new ConfirmationQuestion('Continue with this action? (y/n) ', false, '/^(y|j)/i');
+
+        if (!$helper->ask($input, $output, $question)) {
+            return Command::SUCCESS;
+        }
+
+        $postResults = $this->loopThroughTables($dbName, $tables, $products[0]);
+        $filesystem->dumpFile('post.txt', serialize($postResults));
+
+        dd($this->array_diff_assoc_recursive($preResults, $postResults));
+    }
+
+    private function runSelectQueries(string $tableName, string $columnName, $value): array
+    {
+        try {
+            return array_map(function ($value) {
+                return (array)$value;
+            }, DB::select("select * from {$tableName} where {$columnName} = ?", [$value]));
+        } catch (\Exception $exception) {
+            if (!strstr($exception->getMessage(), 'Column not found')) {
+                throw $exception;
+            }
+        }
+
+        return [];
+    }
+
+    private function loopThroughTables(string $dbName, array $tables, \stdClass $product): array
+    {
+        $results = [];
 
         foreach ($tables as $table) {
             $propertyName = "Tables_in_{$dbName}";
             $tableName = $table->$propertyName;
-            $skuRows = [];
-            $entityIdRows = [];
 
-            try {
-                $skuRows = DB::select("select * from {$tableName} where sku = ?", [$sku]);
-            } catch (\Exception $exception) {
-                if (!strstr($exception->getMessage(), 'Column not found')) {
-                    throw $exception;
-                }
-            }
-
-            try {
-                $entityIdRows = DB::select("select * from {$tableName} where entity_id = ?", [$product->entity_id]);
-            } catch (\Exception $exception) {
-                if (!strstr($exception->getMessage(), 'Column not found')) {
-                    throw $exception;
-                }
-            }
-
+            $skuRows = $this->runSelectQueries($tableName, 'sku', $product->sku);
+            $entityIdRows = $this->runSelectQueries($tableName, 'entity_id', $product->entity_id);
             $rows = array_merge($skuRows, $entityIdRows);
 
             if (empty($rows)) {
                 continue;
             }
 
-            ++$i;
-            $output->write("{$i}. <info>{$tableName}</info>: ");
-            dump($rows);
+            $results[] = [
+                'table' => $tableName,
+                'rows' => $rows,
+            ];
         }
 
-        return 0;
+        return $results;
+    }
+
+    private function array_diff_assoc_recursive(array $array1, array $array2): array
+    {
+        $difference = [];
+
+        foreach ($array1 as $key => $value) {
+            if (is_array($value)) {
+                if (!isset($array2[$key]) || !is_array($array2[$key])) {
+                    $difference[$key]['pre'] = $value;
+                    $difference[$key]['post'] = $array2[$key] ?? '-';
+                } else {
+                    $newDiff = $this->array_diff_assoc_recursive($value, $array2[$key]);
+
+                    if (!empty($newDiff)) {
+                        $difference[$key] = $newDiff;
+                    }
+                }
+            } elseif (!array_key_exists($key, $array2) || $array2[$key] !== $value) {
+                $difference[$key]['pre'] = $value;
+                $difference[$key]['post'] = $array2[$key] ?? '-';
+            }
+        }
+
+        return $difference;
     }
 }
