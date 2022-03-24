@@ -5,6 +5,7 @@ require __DIR__.'/../vendor/autoload.php';
 
 use Illuminate\Database\Capsule\Manager as Capsule;
 use MagentoProductDbChecker\CheckProductBySkuCommand;
+use MagentoProductDbChecker\CompareTwoProductsBySkuCommand;
 use Symfony\Component\Console\Application;
 
 $dotenv = Dotenv\Dotenv::createImmutable(__DIR__ . '/..', '.env');
@@ -24,5 +25,6 @@ $capsule->setAsGlobal();
 $capsule->bootEloquent();
 
 $application = new Application();
+$application->add(new CompareTwoProductsBySkuCommand());
 $application->add(new CheckProductBySkuCommand());
 $application->run();
